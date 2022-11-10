@@ -1,0 +1,41 @@
+```{r, building the function}
+my_logpost <- function(theta, my_info)
+{
+  #Suppose unknown mean is the first parameter
+  like_mu <- theta[1]
+  
+  #Unknown sd is the second
+  like_sigma <- theta[2]
+  
+  #Log-likelihood is the sum of independent log-likelikehood
+  log_lik <- sum(dnorm(x = my_info$xobs,
+                       mean = like_mu,
+                       sd = like_sigma,
+                       log = TRUE))
+  
+  #the log-prior -> sum the independent priors
+  log_prior <- dnorm(x = like_mu,
+                     mean = my_info$mu_0,
+                     sd = my_info$tau_0,
+                     log = TRUE) + 
+    dunif(x = like_sigma,
+          min = my_info$sigma_lwr,
+          max = my_info$sigma_upr,
+          log = TRUE)
+  
+  #adding log-likelihood and log-prior
+  log_lik + log_prior
+}
+```
+
+```{r, builiding my_info list}
+#Defining the information to be used for 35 observations.
+info_N35 <- list(
+  xobs = x[1:35],
+  mu_0 = 250,
+  tau_0 = 2,
+  sigma_lwr = 0.5,
+  sigma_upr = 5.5
+)
+```
+

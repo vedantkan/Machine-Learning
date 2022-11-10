@@ -1,0 +1,169 @@
+---
+title: "Practice"
+author: "VBK10"
+date: "2022-10-11"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(tidyverse)
+library(numDeriv)
+```
+
+```{r}
+mu_true <- 254.5
+sigma_true <- 2.5
+```
+
+```{r}
+set.seed(5001)
+x <- rnorm(n = 50, mean = mu_true, sd = sigma_true)
+```
+
+```{r}
+tibble::tibble(x = x) %>%
+  tibble::rowid_to_column() %>%
+  ggplot(mapping = aes(x = rowid, y = x)) +
+  geom_line(size = 1.15, color = "grey50") +
+  geom_point(size = 4.5, color = "Black") + 
+  geom_hline(yintercept = mu_true, color = "red", size = 1.1) + 
+  geom_hline(yintercept = c(mu_true - 2*sigma_true, mu_true + 2*sigma_true), color = "red", linetype = "dashed", size = 1.1)
+```
+```{r}
+#Fisrt we will just work with 10 observations
+num_obs <- 10
+
+info_use <- list(
+  x_obs = x[0:num_obs],
+  mu_0 = 250,
+  tau_0 = 2,
+  sigma_lwr = 0.5,
+  sigma_upr = 5.5)
+```
+
+```{r}
+#Run-style chart for the first 10 arguments 
+tibble::tibble(x = info_use$x_obs) %>%
+  tibble::rowid_to_column() %>%
+  ggplot(mapping = aes(x = rowid, y = x)) + 
+  geom_line(size = 1.15, color = "grey50") + 
+  geom_point(size = 4.5, color = "Black")
+```
+```{r}
+#Defining log-posterior function
+
+my_logpost <- function(theta, my_info)
+{
+  lik_mu <- theta[1]
+  lik_phi <- theta[2]
+  
+  #Back Transform
+  lik_sigma <- my_info$sigma_lwr + (my_info$sigma_upr - my_info$sigma_lwr) * boot::inv.logit(lik_phi)
+  
+  #Log-likelihood
+  log_lik <- sum(dnorm(x = my_info$x_obs,
+                       mean = lik_mu,
+                       sd = lik_sigma,
+                       log = TRUE))
+  
+  #log-priors
+  lik_prior_mu <- dnorm(x = lik_mu,
+                        mean = my_info$mu_0,
+                        sd = my_info$tau_0,
+                        log = TRUE)
+  
+  lik_prior_sigma <- dunif(x = lik_sigma,
+                           min = my_info$sigma_lwr,
+                           max = my_info$sigma_upr,
+                           log = TRUE)
+  
+  #Derivative adjustmnet
+  log_derivative_adjust <- log(my_info$sigma_upr - my_info$sigma_lwr) + 
+    log(boot::inv.logit(lik_phi)) + 
+    log(1 - boot::inv.logit(lik_phi))
+  
+}
+```
+
+```{r}
+#Defining grid parameter
+param_grid <- expand.grid(lik_mu = seq(from = info_use$mu_0 - 3*info_use$tau_0,
+                                        to = info_use$mu_0 + 3*info_use$tau_0,
+                                        length.out = 251),
+                           lik_phi = seq(from = boot::logit(1e-2),
+                                         to = boot::logit(0.99),
+                                         length.out = 251),
+                           KEEP.OUT.ATTRS = FALSE, stringsAsFactors = FALSE) %>%
+  as.data.frame() %>% tibble::as_tibble()
+
+```
+
+```{r}
+#Visualizing log-posterior over param grid
+
+param_grid %>%
+  rowwise() %>%
+  mutate(log_post = my_logpost(c(lik_mu, lik_phi), info_use)) %>%
+  ungroup() %>%
+  mutate(log_post_2 = log_post - max(log_post)) %>%
+  ggplot(mapping = aes(x = lik_mu, y = lik_phi)) + 
+  geom_raster(mapping = aes(fill = log_post_2)) + 
+  stat_contour(mapping = aes(z = log_post_2),
+               breaks = log(c(0.01/100, 0.01, 0.1, 0.5, 0.9)),
+               size = 2.2,
+               color = "black") + 
+  scale_fill_viridis_c(guide = 'none',
+                       option = "viridis",
+                       limits = log(c(0.01/100, 1))) + 
+  labs(x = expression(mu), y = expression(varphi)) + 
+  theme_bw()
+  
+```
+```{r}
+#Re-defining param grid around log-posterior
+param_grid_redefine <- expand.grid(lik_mu = seq(from = 248, to = 260, length.out = 251),
+                                   lik_phi = seq(from = boot::logit(0.05),
+                                                   to = boot::logit(0.99),
+                                                   length.out = 251),
+                                   KEEP.OUT.ATTRs = FALSE, stringsAsFactors = FALSE) %>%
+  as.data.frame() %>% tibble::as_tibble()
+```
+
+```{r}
+#Visualizing log post wirh redefined param grid
+
+log_post_redefine_df <- param_grid_redefine %>%
+  rowwise() %>%
+  mutate(log_post = my_logpost(c(lik_mu, lik_phi), info_use)) %>%
+  ungroup()
+
+log_post_redefine_df %>%
+  mutate(log_post_2 = log_post - max(log_post)) %>%
+  ggplot(mapping = aes(x = lik_mu, y = lik_phi)) + 
+  geom_raster(mapping = aes(fill = log_post_2)) +
+  stat_contour(mapping = aes(z = log_post_2),
+               breaks = log(c(0.01/100, 0.01, 0.1, 0.5, 0.9)),
+               size = 2.2,
+               color = "black") + 
+  scale_fill_viridis_c(guide = 'none',
+                       option = "viridis",
+                       limits = log(c(0.01/100, 1))) + 
+  labs(x = expression(mu), y = expression(varphi)) + 
+  theme_bw()
+```
+```{r}
+### --- setup functions to support performing optimization --- ###
+
+### for optimization work with the negative log-posterior
+### work simple, hardcode the logposterior function
+negative_logpost <- function(theta, logpost_info)
+{
+  -my_logpost(theta, logpost_info)
+}
+```
+

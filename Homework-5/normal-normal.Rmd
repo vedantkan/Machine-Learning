@@ -1,0 +1,111 @@
+---
+title: "normal-normal"
+author: "VBK10"
+date: "2022-10-04"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+```
+
+
+```{r}
+mu_true <- 1
+sigma_true <- 1
+```
+
+```{r}
+set.seed(2001)
+x <- rnorm(n = 50, mean = mu_true, sd = sigma_true)
+```
+
+```{r}
+mu_0 <- -1
+tau_0 <- 0.75
+```
+
+```{r}
+pnorm(q = mu_true, mean = mu_0, sd = tau_0)
+```
+```{r}
+tibble::tibble(
+  x = x
+) %>% 
+  ggplot(mapping = aes(x = x)) +
+  geom_histogram(bins = 15,
+                 mapping = aes(y = stat(density))) +
+  geom_rug() +
+  stat_function(data = data.frame(x = mu_0 + c(-4*tau_0, 4*tau_0)),
+                fun = dnorm, 
+                args = list(mean = mu_0, sd = tau_0),
+                color = "dodgerblue",
+                size = 1.15) +
+  geom_vline(xintercept = mu_true,
+             color = "red", linetype = "dashed", size = 1.15) + 
+  theme_bw()
+```
+```{r}
+mu_grid <- seq(mu_0 - 6*tau_0, mu_0 + 6*tau_0, length.out = 501)
+```
+
+
+```{r}
+my_logpost <- function(mu, my_info)
+{
+  # log-likelihood -> sum up the independent
+  # log-likelihoods 
+  log_lik <- sum(dnorm(x = my_info$x,
+                       mean = mu,
+                       sd = my_info$sigma,
+                       log = TRUE))
+  
+  # add in the log-prior
+  log_prior <- dnorm(x = mu,
+                     mean = my_info$mu_0,
+                     sd = my_info$tau_0,
+                     log = TRUE)
+  
+  val <- log_lik + log_prior
+  
+  return(list(log_post = val,
+              log_lik = log_lik,
+              log_prior = log_prior))
+}
+```
+
+```{r}
+eval_logpost <- function(Nuse, xobs, info, mu_grid)
+{
+  # package up the necessary information
+  info$x <- xobs[1:Nuse]
+  
+  # calculate the log-posterior over the grid of
+  # mu-values
+  logpost_result <- purrr::map_dfr(mu_grid,
+                                   my_logpost,
+                                   my_info = info)
+  
+  # package together
+  tibble::tibble(
+    mu = mu_grid,
+    log_post = logpost_result$log_post,
+    log_lik = logpost_result$log_lik,
+    log_prior = logpost_result$log_prior
+  ) %>% 
+    mutate(num_obs = Nuse)
+}
+```
+
+```{r}
+hyper_params <- list(
+  mu_0 = mu_0,
+  tau_0 = tau_0,
+  sigma = sigma_true
+)
+```
+
